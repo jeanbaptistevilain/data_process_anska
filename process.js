@@ -5,31 +5,28 @@ let latitudes = [];
 let longitudes = [];
 let temperatures = [];
 
-let row = 0;
-let lat = 0;
-let lon = 0;
-let col = 0;
+let row = 0, col = 0, pointLat, pointLng, iterLat, iterLng, layer, month, currentLayerLines, currentLatIndex, val;
 
 let geoJson = {
     "type": "FeatureCollection",
     "features": []
 };
 
-for (let long = -179.75; long <= 179.75; long += 0.5 ) {
-    longitudes.push(long);
+for (iterLng = -179.75; iterLng <= 179.75; iterLng += 0.5 ) {
+    longitudes.push(iterLng);
 }
 
-for (let lati = 89.75; lati >= 50.25; lati -= 0.5 ) {
-    latitudes.push(lati)
+for (iterLat = 89.75; iterLat >= 50.25; iterLat -= 0.5 ) {
+    latitudes.push(iterLat)
 }
 
-for (let lon = -179.75; lon <= 179.75; lon += 0.5 ) {
-    for (let lat = 89.75; lat >= 50.25; lat -= 0.5 ) {
+for (iterLat = 89.75; iterLat >= 50.25; iterLat -= 0.5 ) {
+    for (iterLng = -179.75; iterLng <= 179.75; iterLng += 0.5 ) {
         geoJson.features.push({
             "type": "Feature",
             "geometry": {
                 "type": "Point",
-                "coordinates": [lon, lat]
+                "coordinates": [iterLng, iterLat]
             },
             "properties": {
                 "temp" : [
@@ -42,16 +39,14 @@ for (let lon = -179.75; lon <= 179.75; lon += 0.5 ) {
 function getPoint(json, lat, lon, value) {
 
     const index = json.features.findIndex(point=>{
-        if (point.geometry.coordinates[0] === parseFloat(lon) && point.geometry.coordinates[1] === parseFloat(lat)){
-            return point;
-        }
+        return (point.geometry.coordinates[0] === parseFloat(lon) && point.geometry.coordinates[1] === parseFloat(lat));
     })
 
-    if(index == -1) {
+    if (index === -1) {
         console.log("error");
     }
     else {
-        json.features[index].properties.temp.push(parseFloat(value)- 273.15);
+        json.features[index].properties.temp.push(value === 'NaN' ? '' : parseFloat(value) - 273.15);
     }
 
     return json;
@@ -62,7 +57,7 @@ function getPoint(json, lat, lon, value) {
 // var lines = csvFile.split("\n");
 // console.log(lines);
 
-fs.createReadStream("./SoilTemp_0000.csv")
+fs.createReadStream("./SoilTemp_2010.csv")
     .pipe(parse({ delimiter: ",", from_line: 1, skip_empty_lines: true}))
     .on("data", function (row) {
        lines.push(row);
@@ -71,27 +66,29 @@ fs.createReadStream("./SoilTemp_0000.csv")
         console.log("debug -- " + error.message);
     })
     .on("end", function () {
+        console.log('CSV parsing complete');
+        for (row = 0; row < lines.length; row++) {
+            currentLayerLines = row%(12*79);
+            layer = row/(12*79);
+            month = currentLayerLines/79;
+            currentLatIndex = currentLayerLines%79;
+            pointLat = latitudes[currentLatIndex];
 
-        lines.forEach(line=>{
-            col = 0;
-            let remainingLines = row%(12*79);
-            let layer = row/(12*79);
-            let month = remainingLines/79;
-            lat = latitudes[remainingLines%79];
-
-            line.forEach(value => {
-                lon = longitudes[col];
-                getPoint(geoJson, lat, lon, value);
-                col = col+1;
-            })
-            row = row+1;
-
-        });
+            for (col = 0; col < lines[row].length; col++) {
+                pointLng = longitudes[col];
+                val = lines[row][col];
+                geoJson.features[currentLatIndex * longitudes.length + col].properties.temp.push(val === 'NaN' ? '' : parseFloat(val) - 273.15);
+                // getPoint(geoJson, pointLat, pointLng, lines[row][col]);
+            }
+            if (row%1000 === 0) {
+                console.log('processed row ' + row);
+            }
+        }
 
         geoJson = JSON.stringify(geoJson);
 
         try {
-            fs.writeFileSync('coordinates_2.geojson', geoJson);
+            fs.writeFileSync('coordinates_test.geojson', geoJson);
         } catch (err) {
             console.error(err);
         }
